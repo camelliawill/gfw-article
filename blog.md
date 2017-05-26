@@ -14,9 +14,9 @@ Where is this data coming from? <a href="http://www.economist.com/news/briefing/
 
 > Global Fishing Watch, an online platform created by Google, Oceana, a marine charity, and Sky Truth, which uses satellite data to further environmental causes, is a keen user of AIS transmissions. They do not just let it locate fishing vessels; they let it take a good guess as to what they are doing (boats long-lining for tuna, for example, zigzag distinctively).
 
-Skytruth has been doing a tremendous work building the early prototype, analyzing this gigantic dataset and providing highly efficient binary vector tiles, where points are clustered both spatially and in time. More on this in Skytruth's technical portal, <a href="http://globalfishingwatch.io/">globalfishingwatch.io</a>.
+Skytruth has done tremendous work building the early prototype, analyzing this gigantic dataset and providing highly efficient binary vector tiles, where points are clustered both spatially and in time. More on this in Skytruth's technical portal, <a href="http://globalfishingwatch.io/">globalfishingwatch.io</a>.
 
-We, at <a href="vizzuality.com">Vizzuality</a>, had the chance to  implement the vision on the users facing side of things, building an interactive and animated visualisation on top of the dataset. I want to talk here about our discoveries, failures and successes achieving the animated "heatmap" style of this map, with reasonably good performance, a maintainable, high-level codebase, and a bit of sanity left.
+We, at <a href="vizzuality.com">Vizzuality</a>, had the chance to  implement the vision on the user facing side of things, building an interactive and animated visualisation on top of the dataset. I want to talk here about our discoveries, failures and successes in achieving the animated "heatmap" style of this map, with reasonably good performance, a maintainable, high-level codebase, and a bit of sanity left.
 
 
 
@@ -26,15 +26,15 @@ We already had experience building an animated heatmap with Canvas 2D, this time
 
 ![](forest.gif)
 
-Canvas 2D is an API that allows drawing shapes, text and images into a drawing surface. But really what it does is just, basically, moving pixels around. Instead of using the GPU, the dedicated graphics unit of a computer or phone, Canvas 2D relies solely on the processor (CPU) to render graphics. Notwithstanding this, it can achieve solid performance, at least with that kind of pixellated rendering style. The technique, in a nutshell: prepare a typed array containing all pixel values (<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray">`Uint8ClampedArray`</a>), dump those pixels them into your canvas all at once (<a href="https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/putImageData">`putImageData()`</a>). Done.
+Canvas 2D is an API that allows drawing shapes, text and images into a drawing surface. But really what it basically does is just move pixels around. Instead of using the GPU, the dedicated graphics unit of a computer or phone, Canvas 2D relies solely on the processor (CPU) to render graphics. Notwithstanding this, it can achieve solid performance, at least with that kind of pixellated rendering style. The technique, in a nutshell: prepares a typed array containing all pixel values (<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray">`Uint8ClampedArray`</a>), and dumps those pixels into your canvas all at once (<a href="https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/putImageData">`putImageData()`</a>). Done.
 
 ![](https://cloud.githubusercontent.com/assets/704210/16413800/89181720-3d34-11e6-92ce-a3ffc7786b72.gif)
 
-We started early prototypes of GlobalFishingWatch with that approach, but we were aiming at a different rendering style. While the pixellated style works well for analysis, we were looking for something that would convey the idea of a "pulsating" activity, highlighting fishing seasons variations and their potential impact on the environment.
+We started early prototypes of Global Fishing Watch with that approach, but we were aiming at a different rendering style. While the pixellated style works well for analysis, we were looking for something that would convey the idea of a "pulsating" activity, highlighting fishing seasons variations and their potential impact on the environment.
 
 ![](heatmap.gif)
 
-To achieve this kind of heatmap effect, we need to blend many many times "brushes strokes" (a tiny picture with a radial gradient gradually transparent) into the canvas, each brush representing here a point in time and space where a vessel caught fish. We can then play with the size and opacity of the brushes to encode a variable such as fishing activity.
+To achieve this kind of heatmap effect, we needed to blend "brushes strokes" (a tiny picture with a radial gradient gradually transparent) many, many times into the canvas, each brush representing here a point in time and space where a vessel sent a signal. We can then play with the size and opacity of the brushes to encode a variable such as fishing activity.
 
 Can we do that with Canvas 2D? There are many techniques to try to make it perform faster: shadow canvas, batch drawing API calls, grouping drawing commands by color/opacity, avoid sub-pixel rendering, staring at your screen with a desperate look, <a href="https://www.html5rocks.com/en/tutorials/canvas/performance/">etc</a>.
 
@@ -49,7 +49,7 @@ Can we do that with Canvas 2D? There are many techniques to try to make it perfo
 
 Naturally an awesome contender when you think of spatiotemporal animations: <a href="https://carto.com/torque/">CARTO's Torque</a>, <a href="http://www.vizzuality.com/projects/BBVA">which we used a few times in the past</a>.
 
-Torque works by mashing SQL tables into preprocessed <a href="https://github.com/CartoDB/torque-tiles">tilecubes</a>, then rendered into a good ol' Canvas 2D. It can deliver relatively good performance with typical datasets, because there is a crucial step of spatial and temporal aggregation done 'offline'. It is an amazingly smart way to tackle the problem, but unfortunately it comes inherently with two major flaws:
+Torque works by mashing SQL tables into preprocessed <a href="https://github.com/CartoDB/torque-tiles">tilecubes</a>, which are then rendered into a good ol' Canvas 2D. It can deliver relatively good performance with typical datasets because there is a crucial step of spatial and temporal aggregation done 'offline'. It is an amazingly smart way to tackle the problem, but unfortunately it comes inherently with two major flaws:
 - you can't do any client side changes to the rendering, which makes useful interaction patterns, such as highlighting same-vessel points on mouse hover, impossible to carry out;
 - interacting with the time attributes is limited. Changing the rendered time span requires changing your SQL query and/or CartoCSS code, and by doing so causing a roundtrip with the server. But we had high ambitions:
 
@@ -61,23 +61,23 @@ Additionally, Torque is not able to render, at the time of writing, anything els
 
 ### All hail WebGL
 
-So after a good deal of hesitations and hair pulling, this day finally happened:
+So after a good deal of hesitation and hair pulling, this day finally happened:
 
 ![](./webgl-canvas.png)
 
-We dropped all hope of using canvas 2D, and went with a shiny new WebGL implementation instead.
+We dropped all hope of using Canvas 2D, and went with a shiny new WebGL implementation instead.
 
 WebGL is tapping into the raw power of Graphic Processing Units (GPUs). A GPU is good at a few things:
 - heating up the room during long winter nights
-- drawing a million times the same thing, insanely fast.
+- drawing the same thing a million times, insanely fast.
 
-Sounded like it could work for us. We wanted to draw heatmap brushes to represent fishing vessels, a lot of times. Brushes are almost the same, but size, opacity and tint will vary - hence a few tricks explained later on.
+It sounded like it could work for us. We wanted to draw heatmap brushes to represent fishing vessels, a lot of times. Brushes are almost the same, but size, opacity and tint will vary - hence a few tricks explained later on.
 
-On the programming side, WebGL is a wildly different beast than canvas 2D. It allows your puny JS code to talk to the GPU through OpenGL Shading Language (GLSL), a language similar to C or C++. GLSL is very, very terse, difficult to debug, and hard to maintain. _[whispered, sobbing voice] I'm afraid of GLSL. Can I go home now ?_
+On the programming side, WebGL is a wildly different beast to Canvas 2D. It allows your puny JS code to talk to the GPU through OpenGL Shading Language (GLSL), a language similar to C or C++. GLSL is very, very terse, difficult to debug, and hard to maintain. _[whispered, sobbing voice] I'm afraid of GLSL. Can I go home now ?_
 
-It turns out there are a bunch of very smart(er) people out there, doing the hard work for us: exposing GLSL functionality to a high level API in JavaScript, typically using some stage hierarchy paradigm - think `container.addChild(sprite); sprite.x = 42;` (oooh the glorious days of Flash, may you rest in peace). We're talking about <a href="https://html5gameengine.com/">2D rendering engines for the browser</a>: Phaser, Pixi.js, HaxeFlixel, etc. Those libraries are typically used to develop games, but why not for tracking illegal fishing on a map as well?
+It turns out there are a bunch of very smart(er) people out there, doing the hard work for us: exposing GLSL functionality to a high level API in JavaScript, typically using some stage hierarchy paradigm - think `container.addChild(sprite); sprite.x = 42;` (oooh the glorious days of Flash, may you rest in peace). We're talking about <a href="https://html5gameengine.com/">2D rendering engines for the browser</a>: Phaser, Pixi.js, HaxeFlixel, etc. Those libraries are typically used to develop games, but why shouldn't they be used for tracking illegal fishing as well?
 
-So how do you pick a rendering engine? Project's activity on GitHub, quality of the documentation, reputation ? Yeah, sure, but more importantly: **BUNNIES** !
+So how do you pick a rendering engine? By reviewing the relevant project's activity on GitHub, its quality of the documentation, and its reputation? Yeah, sure, but more importantly: **BUNNIES** !
 
 ![](bunnies-small.gif)
 
